@@ -114,6 +114,7 @@ $(TARGETS) $(TARGET_DEPS): .config.mk
 
 $(TARGETS): objects.mk .config.mk
 
+include $(DBUILD_ROOT).dbuild/os-detect.mk
 include $(DBUILD_ROOT).dbuild/verbosity.mk
 include $(DBUILD_ROOT).dbuild/pretty.mk
 include $(DBUILD_ROOT).dbuild/subdirs.mk
@@ -123,7 +124,6 @@ include $(DBUILD_ROOT).dbuild/c-objects.mk
 include $(DBUILD_ROOT).dbuild/cpp-objects.mk
 include $(DBUILD_ROOT).dbuild/asm-objects.mk
 include $(DBUILD_ROOT).dbuild/info.mk
-
 
 #
 #	Provide a default target named all,
@@ -160,24 +160,40 @@ kconfig-info:
 .PHONY: mkconfig
 mkconfig: $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig
 	$(Q)mkdir -p $(CONFIG_HEADER_PATH)
-	$(Q)$(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig $(PROJECT_DIR)/ > $(CONFIG_HEADER_PATH)/$(CONFIG_HEADER_NAME)
+	$(Q)$(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig$(OS_EXT) $(PROJECT_DIR)/ > $(CONFIG_HEADER_PATH)/$(CONFIG_HEADER_NAME)
 
-$(CONFIG_HEADER_PATH)/$(CONFIG_HEADER_NAME): $(PROJECT_DIR)/.config $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig | dbuild_splash
+$(CONFIG_HEADER_PATH)/$(CONFIG_HEADER_NAME): $(PROJECT_DIR)/.config $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig$(OS_EXT) | dbuild_splash
 $(CONFIG_HEADER_PATH)/$(CONFIG_HEADER_NAME):
 	$(Q)$(PRETTY) --dbuild "CONF" $(MODULE_NAME) $(subst $(BASE)/,"",$@)
 	$(Q)$(MAKE) mkconfig
 
 $(OBJECTS): $(CONFIG_HEADER_PATH)/$(CONFIG_HEADER_NAME)
 
+CONF:=kconfig-conf
+MCONF:=kconfig-mconf
+MCONF_TERM:=
+ifeq ($(DBUILD_OS), LINUX_64)
+MCONF:=$(BASE)/scripts/kconfig-linux64/kconfig-mconf
+CONF:=$(BASE)/scripts/kconfig-linux64/kconfig-conf
+MCONF_TERM:=TERM=xterm-color
+endif
+ifeq ($(DBUILD_OS), WIN32)
+MCONF:=$(BASE)/scripts/kconfig-win32/kconfig-mconf.exe
+endif
+
 .PHONY: menuconfig
-menuconfig: $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig
+menuconfig: $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig$(OS_EXT)
+ifneq ($(DBUILD_OS), WIN32)
+ifneq ($(DBUILD_OS), LINUX_64)
 	@which kconfig-mconf > /dev/null || { echo "*** kconfig-frontends is not installed"; $(MAKE) kconfig-info ; false; }
+endif
+endif
 ifneq ($(CONFIG_PATH),$(BASE))
 	touch $(CONFIG_PATH)/.config
 	-cp $(BASE)/.config $(CONFIG_PATH)/.config.bak
 	cp $(CONFIG_PATH)/.config $(BASE)/.config
 endif
-	cd $(BASE)/ && CONFIG_=$(CONFIG_) PROJECT_DIR=$(PROJECT_DIR) kconfig-mconf Kconfig
+	cd $(BASE)/ && $(MCONF_TERM) CONFIG_=$(CONFIG_) PROJECT_DIR=$(PROJECT_DIR) $(MCONF) Kconfig
 	$(MAKE) mkconfig
 ifneq ($(CONFIG_PATH),$(BASE))
 	cp $(BASE)/.config $(CONFIG_PATH)/.config
@@ -187,13 +203,11 @@ endif
 
 .PHONY: oldconfig
 oldconfig:
-	@which kconfig-conf > /dev/null || { echo "You need to compile and install kconfig-frontends"; false; }
-	@cd $(BASE)/ && CONFIG_=$(CONFIG_) PROJECT_DIR=$(PROJECT_DIR) kconfig-conf --oldconfig Kconfig .config
+	#@which kconfig-conf > /dev/null || { echo "You need to compile and install kconfig-frontends"; false; }
+	cd $(BASE)/ && CONFIG_=$(CONFIG_) PROJECT_DIR=$(PROJECT_DIR) $(CONF) --olddefconfig Kconfig .config
 
-
-
-$(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig: $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig.c
-	$(Q)gcc $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig.c $(DBUILD_ROOT).dbuild/scripts/mkconfig/cfgparser.c $(DBUILD_ROOT).dbuild/scripts/mkconfig/cfgdefine.c -o $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig
+$(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig$(OS_EXT): $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig.c
+	$(Q)gcc $(DBUILD_ROOT).dbuild/scripts/mkconfig/mkconfig.c $(DBUILD_ROOT).dbuild/scripts/mkconfig/cfgparser.c $(DBUILD_ROOT).dbuild/scripts/mkconfig/cfgdefine.c -o $@
 
 
 #
